@@ -1,0 +1,17 @@
+name: Publish images
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  images:
+    uses: ./.github/workflows/images.yml
+    with:
+      publish: true
+      tag: ${{ github.ref_name }}

@@ -1,0 +1,14 @@
+name: PR images
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: pr-images-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  images:
+    uses: ./.github/workflows/images.yml
+    with:
+      publish: false
+      tag: pr-${{ github.event.pull_request.number }}
