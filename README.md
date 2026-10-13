@@ -11,9 +11,9 @@ Buildx. Use a Buildx builder capable of building `linux/amd64` and `linux/arm64`
 (including emulation or native nodes for the runner's package installation).
 Authenticate to your container registry first.
 
-Run the Bash script from this directory (examples use Nushell):
+Run the script from this directory:
 
-```nu
+```bash
 docker login ghcr.io
 ./build.sh ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:main
 ```
@@ -34,17 +34,15 @@ use the runner's tag (`main` above):
 
 To build without publishing:
 
-```nu
+```bash
 ./build.sh --no-push ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:local
 ```
 
 Docker builds remain in the Buildx cache; this does not load multi-platform images
 into the local Docker daemon. Set `PLATFORMS` to build only one architecture:
 
-```nu
-with-env {PLATFORMS: "linux/amd64"} {
-    ./build.sh --no-push ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:local
-}
+```bash
+PLATFORMS=linux/amd64 ./build.sh --no-push ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:local
 ```
 
 ## Bump Substrate
@@ -55,10 +53,8 @@ full SHA for reproducible builds. The source ref is independent of the published
 image tag; changing it does not require editing the build script or workflows.
 To try a different ref without changing the file:
 
-```nu
-with-env {SUBSTRATE_REF: "v0.3.0"} {
-    ./build.sh --no-push ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:local
-}
+```bash
+SUBSTRATE_REF=v0.3.0 ./build.sh --no-push ghcr.io/YOUR_ORG/substrate ghcr.io/YOUR_ORG/obot-claude-runner:local
 ```
 
 The ref must have the upstream build targets and Dockerfile used by `build.sh`;
@@ -69,7 +65,7 @@ images. The runner's Claude Code version is pinned separately in
 
 To rebuild just the runner:
 
-```nu
+```bash
 docker buildx build --platform linux/amd64,linux/arm64 --tag ghcr.io/YOUR_ORG/obot-claude-runner:main --push ./claude-runner
 ```
 
@@ -103,14 +99,14 @@ next steps; they are not configured here.
 
 Add these arguments to your existing Obot Helm command:
 
-```nu
+```bash
 --set substrate.image.repository=ghcr.io/YOUR_ORG/substrate
 --set-string config.OBOT_SERVER_SUBSTRATE_RUNNER_IMAGE=ghcr.io/YOUR_ORG/obot-claude-runner@sha256:FULL_DIGEST
 ```
 
 Use the multi-platform digest printed by the build, or retrieve it with:
 
-```nu
+```bash
 docker buildx imagetools inspect ghcr.io/YOUR_ORG/obot-claude-runner:main
 ```
 
@@ -136,7 +132,7 @@ hook remain part of the Obot image. The runner communicates with Obot's
 
 Requires Python 3.11+:
 
-```nu
+```bash
 bash -n build.sh
 python3 -B -m unittest discover -s claude-runner
 python3 -B -m unittest discover -s tests
