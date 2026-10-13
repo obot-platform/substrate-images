@@ -12,3 +12,12 @@ jobs:
     with:
       publish: false
       tag: pr-${{ github.event.pull_request.number }}
+  build:
+    needs: images
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check images result
+        env:
+          RESULT: ${{ needs.images.result }}
+        run: '[[ "$RESULT" == success ]]'
