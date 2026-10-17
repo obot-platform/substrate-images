@@ -1,5 +1,5 @@
 FROM debian:bookworm-slim
-ARG CLAUDE_CODE_VERSION=2.1.283
+ARG CLAUDE_CODE_VERSION=2.1.303
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends python3 git curl ca-certificates openssh-client \
     && rm -rf /var/lib/apt/lists/*

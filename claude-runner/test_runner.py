@@ -130,6 +130,17 @@ class MCPConfigTest(unittest.TestCase):
                   patch.object(runner, 'request', return_value={'mcpServers': servers}),
                   patch.object(os, 'execv')):
                 runner.command()
+                skill = config / 'skills/obot-vmcp-oauth/SKILL.md'
+                self.assertFalse(skill.exists())
+                skill.parent.mkdir(parents=True)
+                skill.write_text('stale skill from previous session')
+                runner.command()
+                self.assertFalse(skill.exists())
+
+                # A resumed session with no MCP grants must lose the injected skill.
+                with patch.object(runner, 'request', return_value={'mcpServers': {}}):
+                    runner.command()
+                self.assertFalse(skill.exists())
             saved = json.loads((config / '.claude.json').read_text())
             self.assertEqual(saved['mcpServers'], servers)
             self.assertNotIn('headersHelper', saved['mcpServers']['vmcp_one'])

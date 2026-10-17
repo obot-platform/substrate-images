@@ -101,6 +101,10 @@ def command():
     settings.setdefault('mcpServers', {}).update(config['mcpServers'])
     mcp.write_text(json.dumps(settings))
     mcp.chmod(0o600)
+
+    # Resumed sessions may retain the old OAuth skill; authorization now uses MCP elicitation.
+    (mcp.parent / 'skills/obot-vmcp-oauth/SKILL.md').unlink(missing_ok=True)
+
     # exec keeps stdin and the runner's activity channel on fd 3 attached.
     binary = os.environ['CLAUDE_RUNNER_CLAUDE_BIN']
     os.execv(binary, [binary, *sys.argv[2:]])
