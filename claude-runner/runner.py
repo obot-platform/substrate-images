@@ -105,6 +105,12 @@ def command():
     # Resumed sessions may retain the old OAuth skill; authorization now uses MCP elicitation.
     (mcp.parent / 'skills/obot-vmcp-oauth/SKILL.md').unlink(missing_ok=True)
 
+    # The runner sets ANTHROPIC_BASE_URL for each session; send Claude's API requests
+    # through Obot's LLM proxy instead. Session traffic uses SESSION_INGRESS_URL.
+    base_url = os.environ.pop('OBOT_ANTHROPIC_BASE_URL', '')
+    if base_url:
+        os.environ['ANTHROPIC_BASE_URL'] = base_url
+
     # exec keeps stdin and the runner's activity channel on fd 3 attached.
     binary = os.environ['CLAUDE_RUNNER_CLAUDE_BIN']
     os.execv(binary, [binary, *sys.argv[2:]])

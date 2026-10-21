@@ -147,6 +147,38 @@ class MCPConfigTest(unittest.TestCase):
             self.assertNotIn('Authorization', saved['mcpServers']['vmcp_one']['headers'])
 
 
+class LLMProxyTest(unittest.TestCase):
+    def run_command(self, environment):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            work = root / 'project'
+            config = root / 'config'
+            work.mkdir()
+            config.mkdir()
+            executed = {}
+            with (patch.object(runner, 'ROOT', root),
+                  patch.object(runner, 'CHECKPOINTS', root / 'checkpoints'),
+                  patch.object(runner, 'WORKSPACE_FILE', root / 'current-workspace'),
+                  patch.object(Path, 'cwd', return_value=work),
+                  patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(config), 'CLAUDE_RUNNER_CLAUDE_BIN': '/bin/true',
+                                          'ANTHROPIC_BASE_URL': 'https://api.anthropic.com',
+                                          'SESSION_INGRESS_URL': 'https://api.anthropic.com', **environment}),
+                  patch.object(runner, 'request', return_value={'mcpServers': {}}),
+                  patch.object(os, 'execv', side_effect=lambda *_: executed.update(os.environ))):
+                runner.command()
+            return executed
+
+    def test_claude_uses_obot_llm_proxy(self):
+        executed = self.run_command({'OBOT_ANTHROPIC_BASE_URL': 'http://obot.obot.svc/api/llm-proxy'})
+        self.assertEqual(executed['ANTHROPIC_BASE_URL'], 'http://obot.obot.svc/api/llm-proxy')
+        self.assertEqual(executed['SESSION_INGRESS_URL'], 'https://api.anthropic.com')
+        self.assertNotIn('OBOT_ANTHROPIC_BASE_URL', executed)
+
+    def test_runner_base_url_is_kept_without_obot_proxy(self):
+        executed = self.run_command({})
+        self.assertEqual(executed['ANTHROPIC_BASE_URL'], 'https://api.anthropic.com')
+
+
 class SuspendTest(unittest.TestCase):
     def test_suspension_drains_runner_once_after_transient_error(self):
         process = Mock()
