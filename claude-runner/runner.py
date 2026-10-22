@@ -21,6 +21,10 @@ CHECKPOINTS = ROOT / '.obot-checkpoints'
 WORKSPACE_FILE = Path('/tmp/obot-workspace')
 RESULT = Path('/tmp/obot-result.json')
 MANAGED_SETTINGS = Path('/etc/claude-code/managed-settings.json')
+# After a drain signal, how long the finished supervisor waits for Obot to suspend
+# its actor. Substrate's worker drain budget is 30 minutes, shared with the runner's
+# post-session hook timeout.
+DRAIN_SUSPEND_SECONDS = 300
 
 
 def request(action, body, identity=False, timeout=20):
@@ -212,6 +216,38 @@ class SlackMetadata:
                 if isinstance(value, bool) or len(value.encode()) <= 256}
 
 
+def signal_runner(process):
+    # Signal only the runner, which stops its child and runs the checkpoint hook.
+    try:
+        process.send_signal(signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
+def finish(body, stopping, sleep=time.sleep, now=time.monotonic):
+    """Report the result, then idle so Obot can suspend this actor.
+
+    A worker drain signals the actor and waits for it to exit. Exiting before Obot
+    suspends it crashes the actor, so stay alive until the suspend or a grace period.
+    """
+    reported = False
+    deadline = None
+    while True:
+        if deadline is None and stopping():
+            deadline = now() + DRAIN_SUSPEND_SECONDS
+        if deadline is not None and now() >= deadline:
+            return
+        if not reported:
+            try:
+                request('finished', body)
+                reported = True
+            except urllib.error.HTTPError as error:
+                reported = error.code in (404, 409)
+            except Exception:
+                pass
+        sleep(5)
+
+
 def wait_for_runner(process, stopping):
     suspend_requested = False
     metadata = SlackMetadata()
@@ -227,12 +263,8 @@ def wait_for_runner(process, stopping):
                 # A temporary Obot outage must not stop a healthy session.
                 continue
             if suspend_requested and process.poll() is None:
-                # Signal only the runner, which stops its child and runs the checkpoint hook.
                 # Keep this supervisor alive to report finished before Substrate suspends it.
-                try:
-                    process.send_signal(signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
+                signal_runner(process)
 
     # Capture short sessions and the last transcript append before cleanup.
     try:
@@ -297,7 +329,8 @@ def supervise():
         nonlocal stopping
         stopping = True
         if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
+            # A drain must still save the workspace checkpoint, so stop it like a suspend.
+            signal_runner(process)
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
@@ -311,20 +344,12 @@ def supervise():
             item.unlink()
         else:
             shutil.rmtree(item)
-    body = json.loads(result.read_text()) if result.exists() else {'checkpoint': False, 'reason': 'runner-exited'}
-    while not stopping:
-        try:
-            request('finished', body)
-            break
-        except urllib.error.HTTPError as error:
-            if error.code in (404, 409):
-                break
-        except Exception:
-            pass
-        time.sleep(5)
+    if result.exists():
+        body = json.loads(result.read_text())
+    else:
+        body = {'checkpoint': False, 'reason': 'interrupted' if stopping else 'runner-exited'}
     # Do not restart a runner with a consumed work order. Obot snapshots this idle supervisor.
-    while not stopping:
-        time.sleep(5)
+    finish(body, lambda: stopping)
     server.shutdown()
 
 
