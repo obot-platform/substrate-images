@@ -199,6 +199,49 @@ class SuspendTest(unittest.TestCase):
         process.send_signal.assert_not_called()
 
 
+class FinishTest(unittest.TestCase):
+    class Clock:
+        def __init__(self, limit):
+            self.time = 0
+            self.limit = limit
+
+        def now(self):
+            return self.time
+
+        def sleep(self, seconds):
+            self.time += seconds
+            if self.time > self.limit:
+                raise TimeoutError('supervisor kept idling')
+
+    def test_idles_after_reporting_until_suspended(self):
+        clock = self.Clock(limit=60)
+        with patch.object(runner, 'request', side_effect=[OSError(), {}]) as request:
+            with self.assertRaises(TimeoutError):
+                runner.finish({'checkpoint': True}, lambda: False, clock.sleep, clock.now)
+        self.assertEqual(request.call_count, 2)
+
+    def test_drain_reports_and_waits_for_suspend_before_exiting(self):
+        clock = self.Clock(limit=runner.DRAIN_SUSPEND_SECONDS + 10)
+        with patch.object(runner, 'request', return_value={}) as request:
+            runner.finish({'checkpoint': True}, lambda: True, clock.sleep, clock.now)
+        request.assert_called_once_with('finished', {'checkpoint': True})
+        self.assertEqual(clock.time, runner.DRAIN_SUSPEND_SECONDS)
+
+    def test_inactive_runner_is_not_retried(self):
+        clock = self.Clock(limit=runner.DRAIN_SUSPEND_SECONDS + 10)
+        error = runner.urllib.error.HTTPError('url', 409, 'Runner is no longer active', {}, None)
+        with patch.object(runner, 'request', side_effect=error) as request:
+            runner.finish({'checkpoint': False}, lambda: True, clock.sleep, clock.now)
+        request.assert_called_once()
+
+    def test_drain_signals_only_the_runner(self):
+        process = Mock()
+        process.send_signal.side_effect = ProcessLookupError()
+        runner.signal_runner(process)
+        process.send_signal.assert_called_once_with(signal.SIGTERM)
+        process.kill.assert_not_called()
+
+
 class SlackMetadataTest(unittest.TestCase):
     def test_first_values_and_false_are_preserved(self):
         metadata = runner.SlackMetadata()
